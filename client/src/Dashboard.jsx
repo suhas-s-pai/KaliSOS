@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
+const siren = new Audio("/siren.mp3");
+
 export default function Dashboard() {
 
   const [alerts, setAlerts] = useState([]);
+  const [lastAlertCount, setLastAlertCount] = useState(0);
 
   useEffect(() => {
 
@@ -17,10 +20,26 @@ export default function Dashboard() {
 
 }, []);
 
-  const fetchAlerts = async () => {
-    const res = await axios.get("http://localhost:5000/alerts");
-    setAlerts(res.data);
-  };
+const fetchAlerts = async () => {
+
+const res = await axios.get("http://localhost:5000/alerts");
+
+if(res.data.length > lastAlertCount){
+
+siren.currentTime = 0;
+siren.play();
+
+setTimeout(()=>{
+siren.pause();
+siren.currentTime = 0;
+},1000);
+
+}
+
+setLastAlertCount(res.data.length);
+setAlerts(res.data);
+
+};
 
   const handleAlert = async (id) => {
 
@@ -35,7 +54,7 @@ export default function Dashboard() {
 
       <div className="container">
 
-        <h1 className="title">🚨 ShankSOS Monitoring Dashboard</h1>
+        <h1 className="title">🚨 KaliSOS Monitoring Dashboard</h1>
 
         <p className="subtitle">
           Live Emergency Alerts & Location Monitoring

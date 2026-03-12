@@ -3,11 +3,14 @@ import axios from "axios";
 
 export default function Home() {
 
-  const user = JSON.parse(localStorage.getItem("user"))
-  const [status,setStatus] = useState("Ready");
-  const [listening,setListening] = useState(false);
-  const [mapLink,setMapLink] = useState("");
-  const recognitionRef = useRef(null);
+ const user = JSON.parse(localStorage.getItem("user"))
+const [status,setStatus] = useState("Ready");
+const [listening,setListening] = useState(false);
+const [mapLink,setMapLink] = useState("");
+const recognitionRef = useRef(null);
+const trackingRef = useRef(null);
+const statusCheckRef = useRef(null);
+const sosActiveRef = useRef(false);
 
  const startListening = () => {
 
@@ -66,7 +69,10 @@ setStatus("Voice protection stopped");
 };
 
 
-  const triggerSOS = () => {
+   const triggerSOS = () => {
+
+    if(sosActiveRef.current) return;
+    sosActiveRef.current = true;
 
     setStatus("Getting location...");
 
@@ -88,6 +94,11 @@ setStatus("Voice protection stopped");
         });
 
         setStatus("🚨 SOS Alert Sent");
+        startLiveTracking();
+        checkIfHandled();
+
+
+       
 
       }catch{
         setStatus("Error sending alert");
@@ -97,6 +108,62 @@ setStatus("Voice protection stopped");
 
   };
 
+
+  const startLiveTracking = () => {
+
+trackingRef.current = setInterval(()=>{
+
+navigator.geolocation.getCurrentPosition(async(pos)=>{
+
+const lat = pos.coords.latitude;
+const lon = pos.coords.longitude;
+
+try{
+
+await axios.post("http://localhost:5000/sos",{
+user_name:user.name,
+phone:user.phone,
+latitude:lat,
+longitude:lon
+});
+
+}catch(err){
+console.log("Tracking error");
+}
+
+});
+
+},5000);
+
+};
+
+
+const checkIfHandled = () => {
+
+statusCheckRef.current = setInterval(async()=>{
+
+try{
+
+const res = await axios.get(`http://localhost:5000/alert-status/${user.phone}`);
+
+if(res.data.status === "handled"){
+
+clearInterval(trackingRef.current);
+clearInterval(statusCheckRef.current);
+
+sosActiveRef.current = false;
+
+setStatus("Emergency handled by authorities");
+
+}
+
+}catch(err){
+console.log("Status check failed");
+}
+
+},3000);
+
+};
 
   return(
 
