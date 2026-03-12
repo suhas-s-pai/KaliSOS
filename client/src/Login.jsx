@@ -38,7 +38,7 @@ return(
 
 <div className="panel">
 
-<h1 className="logo">ShankSOS</h1>
+<h1 className="logo">KaliSOS</h1>
 
 <p className="tag">
 Emergency Voice Detection System

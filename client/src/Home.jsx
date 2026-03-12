@@ -108,7 +108,7 @@ setStatus("Voice protection stopped");
 
     <div className="panel">
 
-      <h1 className="logo">ShankSOS</h1>
+      <h1 className="logo">KaliSOS</h1>
 
       <p className="subtitle">
         Voice Activated Emergency Safety Platform
