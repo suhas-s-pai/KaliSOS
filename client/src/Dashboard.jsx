@@ -91,7 +91,7 @@ setAlerts(res.data);
 
   <p>
 <p>
-{new Date(alert.created_at).toLocaleString("en-IN", {
+{new Date(alert.created_at.replace(" ", "T") + "Z").toLocaleString("en-IN", {
   day: "2-digit",
   month: "short",
   year: "numeric",
