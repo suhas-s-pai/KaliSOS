@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 
 const siren = new Audio("/siren.mp3");
+siren.preload = "auto";
 
 export default function Dashboard() {
 
@@ -27,12 +28,12 @@ const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
 if(lastAlertCount !== null && res.data.length > lastAlertCount){
 
 siren.currentTime = 0;
-siren.play();
+siren.play().catch(() => {});
 
-setTimeout(()=>{
-siren.pause();
-siren.currentTime = 0;
-},1000);
+setTimeout(() => {
+  siren.pause();
+  siren.currentTime = 0;
+}, 1000);
 
 }
 
