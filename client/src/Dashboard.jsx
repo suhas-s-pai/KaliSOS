@@ -22,7 +22,7 @@ export default function Dashboard() {
 
 const fetchAlerts = async () => {
 
-const res = await axios.get("http://localhost:5000/alerts");
+const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
 
 if(res.data.length > lastAlertCount){
 
@@ -43,7 +43,7 @@ setAlerts(res.data);
 
   const handleAlert = async (id) => {
 
-  await axios.delete(`http://localhost:5000/alerts/${id}`);
+  await axios.delete(`https://kalisos-backend.onrender.com/alerts/${id}`);
 
   fetchAlerts();
 
