@@ -10,7 +10,12 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState([]);
   const [lastAlertCount, setLastAlertCount] = useState(null);
 
-  useEffect(() => {
+ useEffect(() => {
+
+  // unlock audio
+  document.body.addEventListener("click", () => {
+    siren.play().then(()=>siren.pause()).catch(()=>{});
+  }, { once: true });
 
   fetchAlerts();
 
