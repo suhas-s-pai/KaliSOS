@@ -6,7 +6,7 @@ const siren = new Audio("/siren.mp3");
 export default function Dashboard() {
 
   const [alerts, setAlerts] = useState([]);
-  const [lastAlertCount, setLastAlertCount] = useState(0);
+  const [lastAlertCount, setLastAlertCount] = useState(null);
 
   useEffect(() => {
 
@@ -24,7 +24,7 @@ const fetchAlerts = async () => {
 
 const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
 
-if(res.data.length > lastAlertCount){
+if(lastAlertCount !== null && res.data.length > lastAlertCount){
 
 siren.currentTime = 0;
 siren.play();
