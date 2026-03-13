@@ -90,7 +90,7 @@ setAlerts(res.data);
   <p>📍 Longitude: {alert.longitude}</p>
 
   <p>
-    {new Date(alert.created_at).toLocaleString("en-IN", {
+{new Date(alert.created_at + " UTC").toLocaleString("en-IN", {
   timeZone: "Asia/Kolkata",
   day: "2-digit",
   month: "short",
@@ -99,7 +99,7 @@ setAlerts(res.data);
   minute: "2-digit",
   hour12: true
 })}
-  </p>
+</p>
 
   <a
     href={`https://maps.google.com/?q=${alert.latitude},${alert.longitude}`}
