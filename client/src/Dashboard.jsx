@@ -89,17 +89,16 @@ setAlerts(res.data);
 
   <p>📍 Longitude: {alert.longitude}</p>
 
-  <p>
-<p>
-{new Date(alert.created_at).toLocaleString("en-IN", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true
-})}
-</p>
+ <p>
+    {new Date(alert.created_at).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true
+    })}
+  </p>
 
   <a
     href={`https://maps.google.com/?q=${alert.latitude},${alert.longitude}`}
