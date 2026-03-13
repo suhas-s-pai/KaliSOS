@@ -44,11 +44,9 @@ triggerSOS();
 };
 
 recognition.onend = () => {
-
-if(listening && recognitionRef.current){
-recognitionRef.current.start();
-}
-
+  if (recognitionRef.current) {
+    recognitionRef.current.start();
+  }
 };
 
 recognition.start();
