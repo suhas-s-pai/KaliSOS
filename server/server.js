@@ -18,6 +18,8 @@ db.connect((err) => {
   } else {
     console.log("MySQL Connected");
 
+    db.query("SET time_zone = '+05:30'");
+
     const createTable = `
     CREATE TABLE IF NOT EXISTS sos_alerts (
       id INT AUTO_INCREMENT PRIMARY KEY,
