@@ -90,12 +90,12 @@ setAlerts(res.data);
   <p>📍 Longitude: {alert.longitude}</p>
 
   <p>
-{new Date(alert.created_at + " UTC").toLocaleString("en-IN", {
-  timeZone: "Asia/Kolkata",
+<p>
+{new Date(alert.created_at).toLocaleString("en-IN", {
   day: "2-digit",
   month: "short",
   year: "numeric",
-  hour: "numeric",
+  hour: "2-digit",
   minute: "2-digit",
   hour12: true
 })}
