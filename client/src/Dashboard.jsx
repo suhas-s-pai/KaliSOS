@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 
 const siren = new Audio("/siren.mp3");
+siren.loop = true;
 siren.preload = "auto";
 
 export default function Dashboard() {
