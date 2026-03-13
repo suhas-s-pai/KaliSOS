@@ -9,18 +9,34 @@ app.use(cors());
 app.use(express.json());
 
 // MySQL connection
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME
-});
+
+const db = mysql.createConnection(process.env.DATABASE_URL);
 
 db.connect((err) => {
   if (err) {
     console.log("Database connection failed:", err);
   } else {
     console.log("MySQL Connected");
+
+    const createTable = `
+    CREATE TABLE IF NOT EXISTS sos_alerts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_name VARCHAR(255),
+      phone VARCHAR(255),
+      latitude DECIMAL(10,6),
+      longitude DECIMAL(10,6),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      status VARCHAR(255) DEFAULT 'active'
+    )`;
+
+    db.query(createTable, (err) => {
+      if (err) {
+        console.log("Table creation error:", err);
+      } else {
+        console.log("sos_alerts table ready");
+      }
+    });
+
   }
 });
 

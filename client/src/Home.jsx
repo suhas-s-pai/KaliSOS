@@ -86,7 +86,7 @@ setStatus("Voice protection stopped");
 
       try{
 
-        await axios.post("http://localhost:5000/sos",{
+        await axios.post("https://kalisos-backend.onrender.com/sos",{
          user_name:user.name,
          phone:user.phone,
          latitude:lat,
@@ -120,7 +120,7 @@ const lon = pos.coords.longitude;
 
 try{
 
-await axios.post("http://localhost:5000/sos",{
+await axios.post("https://kalisos-backend.onrender.com/sos",{
 user_name:user.name,
 phone:user.phone,
 latitude:lat,
@@ -144,8 +144,7 @@ statusCheckRef.current = setInterval(async()=>{
 
 try{
 
-const res = await axios.get(`http://localhost:5000/alert-status/${user.phone}`);
-
+const res = await axios.get(`https://kalisos-backend.onrender.com/alert-status/${user.phone}`);
 if(res.data.status === "handled"){
 
 clearInterval(trackingRef.current);
