@@ -8,7 +8,7 @@ siren.preload = "auto";
 export default function Dashboard() {
 
   const [alerts, setAlerts] = useState([]);
-  const [lastAlertCount, setLastAlertCount] = useState(null);
+  const [lastAlertCount, setLastAlertCount] = useState(0);
 
  useEffect(() => {
 
@@ -31,15 +31,15 @@ const fetchAlerts = async () => {
 
 const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
 
-if(lastAlertCount !== null && res.data.length > lastAlertCount){
+if(res.data.length > lastAlertCount){
 
-siren.currentTime = 0;
-siren.play().catch(() => {});
-
-setTimeout(() => {
-  siren.pause();
   siren.currentTime = 0;
-}, 1000);
+  siren.play().catch(()=>{});
+
+  setTimeout(()=>{
+    siren.pause();
+    siren.currentTime = 0;
+  },1000);
 
 }
 
