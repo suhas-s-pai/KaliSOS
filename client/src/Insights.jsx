@@ -4,21 +4,19 @@ import {
   BarChart3,
   Clock,
   MapPin,
-  Timer,
-  CheckCircle2,
-  TrendingUp,
+  Users,
   Flame,
-  Info,
 } from "lucide-react";
 import CommandShell from "./CommandShell";
+import { API_BASE } from "./api";
 
 /**
  * Analytics over the live alert feed.
  *
- * GET /alerts only returns alerts that are still active, so anything
- * historical — daily/weekly/monthly totals, response times, resolution rate —
- * cannot be computed here. Those panels state what they need rather than
- * displaying invented figures.
+ * GET /alerts returns alerts that are still active, so every figure here is
+ * computed from the open queue. Historical series — daily volume, response
+ * times, resolution rate — would need a history endpoint, so they are not
+ * shown at all rather than shown as empty shells.
  */
 export default function Insights() {
   const [alerts, setAlerts] = useState([]);
@@ -31,7 +29,7 @@ export default function Insights() {
 
     const load = async () => {
       try {
-        const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
+        const res = await axios.get(`${API_BASE}/alerts`);
         if (!cancelled) {
           setAlerts(res.data);
           setSampledAt(Date.now());
@@ -76,18 +74,7 @@ export default function Insights() {
   });
   const topClusters = Object.entries(clusters).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  const pending = (label) => (
-    <div className="ks-card">
-      <div className="ks-card__head">
-        <Info size={15} strokeWidth={1.8} />
-        <h3>{label.title}</h3>
-      </div>
-      <div className="ks-empty">
-        <h3 className="ks-pending">—</h3>
-        <p>{label.needs}</p>
-      </div>
-    </div>
-  );
+  const devices = new Set(alerts.map((a) => a.phone)).size;
 
   return (
     <CommandShell
@@ -119,22 +106,10 @@ export default function Insights() {
           <p className="ks-stat__meta">Coordinate clusters (~1km)</p>
         </article>
 
-        <article className="ks-stat ks-stat--muted">
-          <div className="ks-stat__top"><Timer size={15} strokeWidth={1.8} /><span>Avg Response</span></div>
-          <p className="ks-stat__value ks-pending">—</p>
-          <p className="ks-stat__meta">Needs handled_at timestamps</p>
-        </article>
-
-        <article className="ks-stat ks-stat--muted">
-          <div className="ks-stat__top"><CheckCircle2 size={15} strokeWidth={1.8} /><span>Resolution Rate</span></div>
-          <p className="ks-stat__value ks-pending">—</p>
-          <p className="ks-stat__meta">Needs resolved-alert history</p>
-        </article>
-
-        <article className="ks-stat ks-stat--muted">
-          <div className="ks-stat__top"><TrendingUp size={15} strokeWidth={1.8} /><span>Trend vs Yesterday</span></div>
-          <p className="ks-stat__value ks-pending">—</p>
-          <p className="ks-stat__meta">Needs historical query range</p>
+        <article className="ks-stat">
+          <div className="ks-stat__top"><Users size={15} strokeWidth={1.8} /><span>Callers</span></div>
+          <p className="ks-stat__value">{devices}</p>
+          <p className="ks-stat__meta">Distinct handsets in the queue</p>
         </article>
 
       </section>
@@ -211,7 +186,7 @@ export default function Insights() {
 
       </div>
 
-      <div className="ks-split" style={{ marginBottom: 16 }}>
+      <div>
 
         <div className="ks-card">
           <div className="ks-card__head">
@@ -236,22 +211,6 @@ export default function Insights() {
           </div>
         </div>
 
-        {pending({
-          title: "Daily / Weekly / Monthly Volume",
-          needs: "GET /alerts returns only active alerts. A date-ranged history endpoint is required before these series can be plotted.",
-        })}
-
-      </div>
-
-      <div className="ks-split">
-        {pending({
-          title: "Incident Heatmap",
-          needs: "Requires historical coordinates plus a tile provider key for the heat layer.",
-        })}
-        {pending({
-          title: "Response Time Trend",
-          needs: "Requires a handled_at column so time-to-resolution can be measured per incident.",
-        })}
       </div>
 
     </CommandShell>

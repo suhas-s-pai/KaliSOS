@@ -4,13 +4,21 @@ import {
   Search,
   Download,
   Printer,
-  Calendar,
-  Filter,
+  Users,
+  Timer,
   FileText,
-  ExternalLink,
-  Info,
+  Navigation,
 } from "lucide-react";
 import CommandShell from "./CommandShell";
+import { API_BASE } from "./api";
+
+// Re-evaluated on each 10s refresh, which is as often as the table changes.
+function waitingFor(createdAt) {
+  const minutes = Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
+  if (minutes < 1) return "under a minute";
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
 
 /**
  * Incident reporting over the live feed.
@@ -30,7 +38,7 @@ export default function Reports() {
 
     const load = async () => {
       try {
-        const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
+        const res = await axios.get(`${API_BASE}/alerts`);
         if (!cancelled) setAlerts(res.data);
       } catch {
         /* the top bar reports reachability */
@@ -60,6 +68,13 @@ export default function Reports() {
 
     return true;
   });
+
+  const oldest = rows.reduce(
+    (worst, r) => (!worst || new Date(r.created_at) < new Date(worst.created_at) ? r : worst),
+    null
+  );
+
+  const oldestLabel = oldest ? waitingFor(oldest.created_at) : "—";
 
   const exportCsv = () => {
     const header = ["id", "name", "phone", "latitude", "longitude", "status", "created_at", "updated_at"];
@@ -91,7 +106,7 @@ export default function Reports() {
       syncLive
     >
 
-      <section className="ks-stats" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+      <section className="ks-stats">
 
         <article className="ks-stat">
           <div className="ks-stat__top"><FileText size={15} strokeWidth={1.8} /><span>Rows Matched</span></div>
@@ -99,22 +114,16 @@ export default function Reports() {
           <p className="ks-stat__meta">of {alerts.length} open incidents</p>
         </article>
 
-        <article className="ks-stat ks-stat--muted">
-          <div className="ks-stat__top"><Calendar size={15} strokeWidth={1.8} /><span>Archived Incidents</span></div>
-          <p className="ks-stat__value ks-pending">—</p>
-          <p className="ks-stat__meta">Needs a history endpoint</p>
+        <article className="ks-stat ks-stat--green">
+          <div className="ks-stat__top"><Users size={15} strokeWidth={1.8} /><span>Callers</span></div>
+          <p className="ks-stat__value">{new Set(rows.map((r) => r.phone)).size}</p>
+          <p className="ks-stat__meta">Distinct handsets in this selection</p>
         </article>
 
-        <article className="ks-stat ks-stat--muted">
-          <div className="ks-stat__top"><Filter size={15} strokeWidth={1.8} /><span>Officer Filter</span></div>
-          <p className="ks-stat__value ks-pending">—</p>
-          <p className="ks-stat__meta">No officer is recorded per alert</p>
-        </article>
-
-        <article className="ks-stat ks-stat--muted">
-          <div className="ks-stat__top"><Info size={15} strokeWidth={1.8} /><span>Resolution Notes</span></div>
-          <p className="ks-stat__value ks-pending">—</p>
-          <p className="ks-stat__meta">Needs a notes column</p>
+        <article className="ks-stat ks-stat--amber">
+          <div className="ks-stat__top"><Timer size={15} strokeWidth={1.8} /><span>Oldest In Queue</span></div>
+          <p className="ks-stat__value ks-stat__value--sm">{oldestLabel}</p>
+          <p className="ks-stat__meta">Time since the earliest matched alert</p>
         </article>
 
       </section>
@@ -193,7 +202,6 @@ export default function Reports() {
                   <th>Raised</th>
                   <th>Last Ping</th>
                   <th>Status</th>
-                  <th>Officer</th>
                   <th />
                 </tr>
               </thead>
@@ -229,15 +237,15 @@ export default function Reports() {
                         {r.status}
                       </span>
                     </td>
-                    <td className="ks-pending">unassigned</td>
                     <td>
                       <a
                         className="ks-btn ks-btn--ghost ks-btn--sm"
-                        href={`https://maps.google.com/?q=${r.latitude},${r.longitude}`}
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${r.latitude},${r.longitude}&travelmode=driving`}
                         target="_blank"
                         rel="noreferrer"
+                        title="Open directions"
                       >
-                        <ExternalLink size={13} strokeWidth={1.9} />
+                        <Navigation size={13} strokeWidth={1.9} />
                       </a>
                     </td>
                   </tr>

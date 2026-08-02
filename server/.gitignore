@@ -1,8 +1,16 @@
 node_modules
+
+# Secrets. SUPABASE_SERVICE_ROLE_KEY bypasses Row Level Security, so a leaked
+# .env grants full read/write access to every emergency record.
 .env
-.env.local
-.env.development
-.env.production
-.DS_Store
+.env.*
+
+# Required by other developers — placeholders only, no real credentials.
+# Must stay below the .env.* rule so the negation wins.
+!.env.example
+
 dist
 build
+coverage
+*.log
+.DS_Store

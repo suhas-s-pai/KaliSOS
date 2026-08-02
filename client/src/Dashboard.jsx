@@ -1,10 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   Siren,
-  CheckCircle2,
   Timer,
-  Users,
   Satellite,
   Activity,
   Phone,
@@ -12,19 +10,40 @@ import {
   MapPin,
   Copy,
   Check,
-  ExternalLink,
-  Volume2,
   Navigation,
-  Building2,
   Crosshair,
-  Mic,
-  Radio,
+  CircleCheckBig,
+  TriangleAlert,
+  User,
 } from "lucide-react";
 import CommandShell from "./CommandShell";
+import SafetyResources from "./SafetyResources";
+import { API_BASE } from "./api";
+import { distanceKm, formatDistance } from "./nearby";
+import { usePrefs, getPrefs, recordSync } from "./prefs";
 
 const siren = new Audio("/siren.mp3");
 siren.loop = true;
 siren.preload = "auto";
+
+// Raises a system notification for alerts that arrived while the operator was
+// looking at another window. Silently skipped unless Settings enabled it and
+// the browser granted permission.
+function notifyNewAlerts(rows, count) {
+  if (!getPrefs().desktopNotifications) return;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+
+  const newest = rows[0];
+
+  try {
+    new Notification(count > 1 ? `${count} new SOS alerts` : "New SOS alert", {
+      body: newest ? `${newest.user_name} · ${newest.phone}` : "Open the control room",
+      tag: "kalisos-alert",
+    });
+  } catch {
+    /* notification construction is best effort */
+  }
+}
 
 /* ---------- presentation helpers (no API or state involvement) ---------- */
 
@@ -44,18 +63,20 @@ function elapsedSince(createdAt) {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
-// Great-circle distance, used only when the operator has pinned the control
-// room position. Returns null otherwise rather than inventing a number.
-function distanceKm(origin, lat, lon) {
-  if (!origin) return null;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(lat - origin.lat);
-  const dLon = toRad(lon - origin.lon);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(origin.lat)) * Math.cos(toRad(lat)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+function raisedWithinMinutes(createdAt, minutes) {
+  return Date.now() - new Date(createdAt).getTime() < minutes * 60000;
+}
+
+function clockTime(value) {
+  return new Date(value).toLocaleTimeString("en-IN", {
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+}
+
+function stamp(value) {
+  return new Date(value).toLocaleString("en-IN", {
+    day: "2-digit", month: "short", hour: "numeric", minute: "2-digit", hour12: true,
+  });
 }
 
 function osmEmbed(lat, lon, span = 0.012) {
@@ -65,56 +86,120 @@ function osmEmbed(lat, lon, span = 0.012) {
 
 export default function Dashboard({ focus }) {
 
+  const prefs = usePrefs();
+
   const [alerts, setAlerts] = useState([]);
-  const [lastAlertCount, setLastAlertCount] = useState(0);
+  const [feedError, setFeedError] = useState(false);
 
- useEffect(() => {
+  // Held in a ref, not state: the polling interval captures its callback once,
+  // so a state value read inside it would stay frozen at its initial value and
+  // re-trigger the siren on every single poll.
+  const lastCountRef = useRef(null);
 
-  // unlock audio
-  document.body.addEventListener("click", () => {
-    siren.play().then(()=>siren.pause()).catch(()=>{});
-  }, { once: true });
+  const fetchAlerts = useCallback(async () => {
 
-  fetchAlerts();
+    const startedAt = performance.now();
 
-  const interval = setInterval(() => {
-    fetchAlerts();
-  }, 2000);
+    try {
 
-  return () => clearInterval(interval);
+      const res = await axios.get(`${API_BASE}/alerts`);
+      const previous = lastCountRef.current;
 
-}, []);
+      // `previous === null` is the first load: existing alerts are not new
+      // arrivals, so the room is not alarmed for them.
+      if (previous !== null && res.data.length > previous) {
 
-const fetchAlerts = async () => {
+        // Read at fire time rather than captured, so switching the sound off
+        // in Settings silences the very next alert.
+        if (getPrefs().notificationSound) {
+          siren.currentTime = 0;
+          siren.play().catch(() => {});
 
-const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
+          setTimeout(() => {
+            siren.pause();
+            siren.currentTime = 0;
+          }, 1000);
+        }
 
-if(res.data.length > lastAlertCount){
+        notifyNewAlerts(res.data, res.data.length - previous);
+      }
 
-  siren.currentTime = 0;
-  siren.play().catch(()=>{});
+      lastCountRef.current = res.data.length;
+      setAlerts(res.data);
+      setFeedError(false);
 
-  setTimeout(()=>{
-    siren.pause();
-    siren.currentTime = 0;
-  },1000);
+      recordSync({
+        ok: true,
+        latencyMs: Math.round(performance.now() - startedAt),
+        status: res.status,
+      });
 
-}
+    } catch (error) {
+      // Render cold-starts and mobile handover both surface here. The feed
+      // keeps its last known rows and the banner says the link is stale.
+      setFeedError(true);
 
-setLastAlertCount(res.data.length);
-setAlerts(res.data);
+      recordSync({
+        ok: false,
+        latencyMs: Math.round(performance.now() - startedAt),
+        status: error.response?.status || 0,
+      });
+    }
 
-};
+  }, []);
+
+  // Browsers refuse programmatic audio until the page has been interacted
+  // with. Kept in its own effect so a changed poll interval does not re-arm it.
+  useEffect(() => {
+    document.body.addEventListener("click", () => {
+      siren.play().then(() => siren.pause()).catch(() => {});
+    }, { once: true });
+  }, []);
+
+  // Re-created whenever the operator changes the interval in Settings.
+  //
+  // Self-scheduling rather than setInterval: the next poll is queued only once
+  // the previous one has settled. At a 2s interval against a cold Render
+  // instance, setInterval would stack up overlapping requests and let an older
+  // response land after a newer one.
+  useEffect(() => {
+    let cancelled = false;
+    let timer = 0;
+
+    const schedule = (delay) => {
+      timer = setTimeout(async () => {
+        await fetchAlerts();
+        if (!cancelled) schedule(prefs.refreshIntervalMs);
+      }, delay);
+    };
+
+    schedule(0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [fetchAlerts, prefs.refreshIntervalMs]);
 
   const handleAlert = async (id) => {
 
-  await axios.delete(`https://kalisos-backend.onrender.com/alerts/${id}`);
+  try {
+    await axios.delete(`${API_BASE}/alerts/${id}`);
+  } catch {
+    setFeedError(true);
+    return;
+  }
+
+  // The row is gone from the next poll anyway; dropping it now keeps the
+  // click from feeling laggy.
+  lastCountRef.current = Math.max(0, (lastCountRef.current || 1) - 1);
+  setAlerts((rows) => rows.filter((row) => row.id !== id));
 
   fetchAlerts();
 
 };
 
-  /* ---------- view-only additions ---------- */
+  /* ---------- view state ---------- */
 
   const [selectedId, setSelectedId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
@@ -127,6 +212,13 @@ setAlerts(res.data);
 
   const uniqueDevices = new Set(alerts.map((a) => a.phone)).size;
 
+  const critical = alerts.filter((a) => raisedWithinMinutes(a.created_at, 3)).length;
+
+  const oldest = alerts.reduce(
+    (worst, a) => (!worst || new Date(a.created_at) < new Date(worst.created_at) ? a : worst),
+    null
+  );
+
   const copyCoordinates = async (alert) => {
     const text = `${alert.latitude}, ${alert.longitude}`;
     try {
@@ -136,15 +228,6 @@ setAlerts(res.data);
     } catch {
       window.prompt("Copy coordinates", text);
     }
-  };
-
-  const playSiren = () => {
-    siren.currentTime = 0;
-    siren.play().catch(() => {});
-    setTimeout(() => {
-      siren.pause();
-      siren.currentTime = 0;
-    }, 2500);
   };
 
   const pinControlRoom = () => {
@@ -165,22 +248,10 @@ setAlerts(res.data);
         <p className="ks-stat__meta">Awaiting response</p>
       </article>
 
-      <article className="ks-stat ks-stat--muted">
-        <div className="ks-stat__top"><CheckCircle2 size={15} strokeWidth={1.8} /><span>Handled Today</span></div>
-        <p className="ks-stat__value ks-pending">—</p>
-        <p className="ks-stat__meta">Needs a resolved-alerts endpoint</p>
-      </article>
-
-      <article className="ks-stat ks-stat--muted">
-        <div className="ks-stat__top"><Timer size={15} strokeWidth={1.8} /><span>Avg Response Time</span></div>
-        <p className="ks-stat__value ks-pending">—</p>
-        <p className="ks-stat__meta">Needs handled_at timestamps</p>
-      </article>
-
-      <article className="ks-stat ks-stat--muted">
-        <div className="ks-stat__top"><Users size={15} strokeWidth={1.8} /><span>Officers Online</span></div>
-        <p className="ks-stat__value ks-pending">—</p>
-        <p className="ks-stat__meta">Needs officer presence service</p>
+      <article className="ks-stat ks-stat--amber">
+        <div className="ks-stat__top"><TriangleAlert size={15} strokeWidth={1.8} /><span>Critical · P1</span></div>
+        <p className="ks-stat__value">{critical}</p>
+        <p className="ks-stat__meta">Raised in the last 3 minutes</p>
       </article>
 
       <article className="ks-stat ks-stat--green">
@@ -190,9 +261,21 @@ setAlerts(res.data);
       </article>
 
       <article className="ks-stat">
+        <div className="ks-stat__top"><Timer size={15} strokeWidth={1.8} /><span>Longest Waiting</span></div>
+        <p className="ks-stat__value ks-stat__value--sm">
+          {oldest ? elapsedSince(oldest.created_at) : "—"}
+        </p>
+        <p className="ks-stat__meta">{oldest ? oldest.user_name : "Queue is clear"}</p>
+      </article>
+
+      <article className="ks-stat">
         <div className="ks-stat__top"><Activity size={15} strokeWidth={1.8} /><span>Alert Feed</span></div>
-        <p className="ks-stat__value ks-stat__value--sm">Polling · 2s</p>
-        <p className="ks-stat__meta">Live connection status in top bar</p>
+        <p className="ks-stat__value ks-stat__value--sm">
+          {feedError ? "Reconnecting" : `Polling · ${prefs.refreshIntervalMs / 1000}s`}
+        </p>
+        <p className="ks-stat__meta">
+          {feedError ? "Backend unreachable, retrying" : "Streaming from Supabase"}
+        </p>
       </article>
 
     </section>
@@ -215,12 +298,19 @@ setAlerts(res.data);
         </button>
       </div>
 
+      {feedError && (
+        <div className="ks-banner">
+          <TriangleAlert size={15} strokeWidth={1.9} />
+          Live link interrupted — showing the last received state while retrying.
+        </div>
+      )}
+
       <div className="ks-feed">
 
         {alerts.length === 0 && (
           <div className="ks-card">
             <div className="ks-empty">
-              <CheckCircle2 size={22} strokeWidth={1.6} />
+              <CircleCheckBig size={22} strokeWidth={1.6} />
               <h3>No active emergencies</h3>
               <p>The channel is monitored continuously. Incoming alerts appear here within two seconds.</p>
             </div>
@@ -229,7 +319,9 @@ setAlerts(res.data);
 
         {alerts.map((alert) => {
           const priority = priorityOf(alert.created_at);
-          const distance = distanceKm(origin, Number(alert.latitude), Number(alert.longitude));
+          const away = origin
+            ? distanceKm(origin.lat, origin.lon, Number(alert.latitude), Number(alert.longitude))
+            : null;
 
           return (
             <article
@@ -247,14 +339,13 @@ setAlerts(res.data);
                 <div className="ks-alert__id">
                   <h3>{alert.user_name}</h3>
                   <div className="ks-alert__sub">
-                    <a href={`tel:${alert.phone}`} onClick={(e) => e.stopPropagation()}>
-                      <Phone size={12} strokeWidth={1.9} />
+                    <span className="ks-mono">
+                      <Phone size={12} strokeWidth={1.9} style={{ verticalAlign: -2, marginRight: 4 }} />
                       {alert.phone}
-                    </a>
-                    <span><Clock size={12} strokeWidth={1.9} style={{ verticalAlign: -2, marginRight: 4 }} />
-                      {new Date(alert.created_at).toLocaleString("en-IN", {
-                        day: "2-digit", month: "short", hour: "numeric", minute: "2-digit", hour12: true,
-                      })}
+                    </span>
+                    <span>
+                      <Clock size={12} strokeWidth={1.9} style={{ verticalAlign: -2, marginRight: 4 }} />
+                      {stamp(alert.created_at)}
                     </span>
                   </div>
                 </div>
@@ -267,57 +358,48 @@ setAlerts(res.data);
                 <span className="ks-chip ks-chip--red">
                   <span className="ks-dot ks-dot--red" /> SOS Active
                 </span>
-                <span className="ks-chip ks-chip--ghost" title="The API does not record whether the alert came from the SOS button or a voice phrase">
-                  <Mic size={11} strokeWidth={2} /> Trigger not recorded
-                </span>
-                <span className="ks-chip ks-chip--ghost" title="Handset battery is not transmitted by the client">
-                  Battery n/a
-                </span>
                 <span className="ks-chip ks-chip--ghost">
-                  <Radio size={11} strokeWidth={2} /> {elapsedSince(alert.created_at)} elapsed
+                  <Timer size={11} strokeWidth={2} /> {elapsedSince(alert.created_at)} elapsed
                 </span>
+                {alert.updated_at && (
+                  <span className="ks-chip ks-chip--ghost">
+                    <Satellite size={11} strokeWidth={2} /> Last ping {clockTime(alert.updated_at)}
+                  </span>
+                )}
               </div>
 
               <div className="ks-grid2">
                 <div className="ks-kv">
                   <div className="ks-kv__k"><MapPin size={10} strokeWidth={2.2} /> Latitude</div>
-                  <div className="ks-kv__v">{alert.latitude}</div>
+                  <div className="ks-kv__v">{Number(alert.latitude).toFixed(6)}</div>
                 </div>
                 <div className="ks-kv">
                   <div className="ks-kv__k"><MapPin size={10} strokeWidth={2.2} /> Longitude</div>
-                  <div className="ks-kv__v">{alert.longitude}</div>
+                  <div className="ks-kv__v">{Number(alert.longitude).toFixed(6)}</div>
                 </div>
-                <div className="ks-kv">
-                  <div className="ks-kv__k"><Navigation size={10} strokeWidth={2.2} /> Distance</div>
-                  <div className={`ks-kv__v${distance === null ? " ks-pending" : ""}`}>
-                    {distance === null ? "pin origin" : `${distance.toFixed(2)} km`}
+                {away !== null && (
+                  <div className="ks-kv">
+                    <div className="ks-kv__k"><Navigation size={10} strokeWidth={2.2} /> From control room</div>
+                    <div className="ks-kv__v">{formatDistance(away)}</div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="ks-actions" onClick={(e) => e.stopPropagation()}>
 
                 <a
                   className="ks-btn ks-btn--sm"
-                  href={`https://maps.google.com/?q=${alert.latitude},${alert.longitude}`}
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${alert.latitude},${alert.longitude}&travelmode=driving`}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <ExternalLink size={14} strokeWidth={1.9} /> Open Maps
+                  <Navigation size={14} strokeWidth={1.9} /> Navigate
                 </a>
 
                 <button className="ks-btn ks-btn--ghost ks-btn--sm" onClick={() => copyCoordinates(alert)}>
                   {copiedId === alert.id
                     ? <><Check size={14} strokeWidth={2.2} /> Copied</>
                     : <><Copy size={14} strokeWidth={1.9} /> Coordinates</>}
-                </button>
-
-                <a className="ks-btn ks-btn--ghost ks-btn--sm" href={`tel:${alert.phone}`}>
-                  <Phone size={14} strokeWidth={1.9} /> Call
-                </a>
-
-                <button className="ks-btn ks-btn--ghost ks-btn--sm" onClick={playSiren}>
-                  <Volume2 size={14} strokeWidth={1.9} /> Siren
                 </button>
 
                 <button
@@ -337,8 +419,9 @@ setAlerts(res.data);
     </section>
   );
 
-  const mapPanel = (
+  const sidePanel = (
     <aside className="ks-mappanel">
+
       <div className="ks-card">
 
         <div className="ks-card__head">
@@ -358,35 +441,50 @@ setAlerts(res.data);
               />
             </div>
 
-            <div className="ks-card__body" style={{ display: "grid", gap: 10 }}>
+            <div className="ks-card__body" style={{ display: "grid", gap: 12 }}>
 
               <div className="ks-list">
-                <div className="ks-list__row"><span style={{ color: "var(--muted)" }}>Caller</span><b>{selected.user_name}</b></div>
-                <div className="ks-list__row"><span style={{ color: "var(--muted)" }}>Latitude</span><b>{selected.latitude}</b></div>
-                <div className="ks-list__row"><span style={{ color: "var(--muted)" }}>Longitude</span><b>{selected.longitude}</b></div>
                 <div className="ks-list__row">
-                  <span style={{ color: "var(--muted)" }}>Nearest station</span>
-                  <b className="ks-pending">not connected</b>
+                  <User size={14} strokeWidth={1.8} style={{ color: "var(--muted)" }} />
+                  <span style={{ color: "var(--muted)" }}>Caller</span>
+                  <b>{selected.user_name}</b>
+                </div>
+                <div className="ks-list__row">
+                  <Phone size={14} strokeWidth={1.8} style={{ color: "var(--muted)" }} />
+                  <span style={{ color: "var(--muted)" }}>Phone</span>
+                  <b>{selected.phone}</b>
+                </div>
+                <div className="ks-list__row">
+                  <Siren size={14} strokeWidth={1.8} style={{ color: "var(--muted)" }} />
+                  <span style={{ color: "var(--muted)" }}>SOS raised</span>
+                  <b>{stamp(selected.created_at)}</b>
+                </div>
+                <div className="ks-list__row">
+                  <Satellite size={14} strokeWidth={1.8} style={{ color: "var(--muted)" }} />
+                  <span style={{ color: "var(--muted)" }}>Last ping</span>
+                  <b>{selected.updated_at ? clockTime(selected.updated_at) : "—"}</b>
+                </div>
+                <div className="ks-list__row">
+                  <MapPin size={14} strokeWidth={1.8} style={{ color: "var(--muted)" }} />
+                  <span style={{ color: "var(--muted)" }}>Coordinates</span>
+                  <b>{Number(selected.latitude).toFixed(5)}, {Number(selected.longitude).toFixed(5)}</b>
                 </div>
               </div>
 
               <div className="ks-actions">
                 <a
                   className="ks-btn ks-btn--sm"
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${selected.latitude},${selected.longitude}`}
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${selected.latitude},${selected.longitude}&travelmode=driving`}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <Navigation size={14} strokeWidth={1.9} /> Navigate
+                  <Navigation size={14} strokeWidth={1.9} /> Navigate to caller
                 </a>
-                <a
-                  className="ks-btn ks-btn--ghost ks-btn--sm"
-                  href={`https://www.google.com/maps/search/police+station/@${selected.latitude},${selected.longitude},14z`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Building2 size={14} strokeWidth={1.9} /> Find station
-                </a>
+                <button className="ks-btn ks-btn--ghost ks-btn--sm" onClick={() => copyCoordinates(selected)}>
+                  {copiedId === selected.id
+                    ? <><Check size={14} strokeWidth={2.2} /> Copied</>
+                    : <><Copy size={14} strokeWidth={1.9} /> Copy position</>}
+                </button>
               </div>
 
             </div>
@@ -400,6 +498,23 @@ setAlerts(res.data);
         )}
 
       </div>
+
+      <SafetyResources
+        compact
+        origin={
+          selected
+            ? { lat: Number(selected.latitude), lon: Number(selected.longitude) }
+            : null
+        }
+        title="Response Units Near The Caller"
+        caption={
+          selected
+            ? `Searching around ${selected.user_name}'s live position`
+            : "Select an alert to search around its position"
+        }
+        placeholder="Select an alert on the feed first."
+      />
+
     </aside>
   );
 
@@ -407,11 +522,11 @@ setAlerts(res.data);
     <CommandShell
       title={feedOnly ? "Live Alerts" : "Emergency Operations"}
       alertCount={alerts.length}
-      syncLabel="Live · 2s"
-      syncLive
+      syncLabel={feedError ? "Retrying" : `Live · ${prefs.refreshIntervalMs / 1000}s`}
+      syncLive={!feedError}
     >
       {!feedOnly && statsRow}
-      {feedOnly ? feed : <div className="ks-split">{feed}{mapPanel}</div>}
+      {feedOnly ? feed : <div className="ks-split">{feed}{sidePanel}</div>}
     </CommandShell>
   );
 }

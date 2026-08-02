@@ -12,9 +12,9 @@ import {
   LogOut,
   Clock,
   Activity,
-  Users,
   RefreshCw,
 } from "lucide-react";
+import { API_BASE } from "./api";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -52,7 +52,7 @@ export default function CommandShell({
 
     const ping = async () => {
       try {
-        await axios.get("https://kalisos-backend.onrender.com/", {
+        await axios.get(`${API_BASE}/`, {
           timeout: 8000,
         });
         if (!cancelled) setApiHealth("online");
@@ -165,14 +165,6 @@ export default function CommandShell({
               <div className="ks-metric__value mono">
                 {alertCount === null ? "—" : alertCount}
               </div>
-            </div>
-          </div>
-
-          <div className="ks-metric ks-metric--hideable">
-            <Users size={14} strokeWidth={1.8} />
-            <div>
-              <span className="ks-metric__label">Officers online</span>
-              <div className="ks-metric__value ks-pending" title="Requires an officer presence service">—</div>
             </div>
           </div>
 

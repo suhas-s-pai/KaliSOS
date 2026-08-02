@@ -2,15 +2,14 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import {
   Search,
-  Layers,
   MapPin,
   Navigation,
-  Building2,
-  Satellite,
   Signal,
   Crosshair,
 } from "lucide-react";
 import CommandShell from "./CommandShell";
+import SafetyResources from "./SafetyResources";
+import { API_BASE } from "./api";
 
 // OpenStreetMap's embed endpoint needs no API key. These layers are real and
 // switch the rendered tiles; satellite and traffic are not offered by it.
@@ -33,7 +32,7 @@ export default function MapGrid() {
 
     const load = async () => {
       try {
-        const res = await axios.get("https://kalisos-backend.onrender.com/alerts");
+        const res = await axios.get(`${API_BASE}/alerts`);
         if (!cancelled) setAlerts(res.data);
       } catch {
         /* the top bar reports reachability */
@@ -74,9 +73,6 @@ export default function MapGrid() {
   const src =
     `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=${layer}` +
     (selected ? `&marker=${lat},${lon}` : "");
-
-  const nearby = (kind) =>
-    `https://www.google.com/maps/search/${kind}/@${lat},${lon},14z`;
 
   return (
     <CommandShell
@@ -129,12 +125,6 @@ export default function MapGrid() {
               −
             </button>
 
-            <span className="ks-chip ks-chip--ghost" title="Not available through the keyless OSM embed">
-              <Satellite size={12} strokeWidth={2} /> Satellite n/a
-            </span>
-            <span className="ks-chip ks-chip--ghost" title="Requires a routing/traffic tile provider">
-              <Signal size={12} strokeWidth={2} /> Traffic n/a
-            </span>
           </div>
 
           <div className="ks-mapwrap">
@@ -149,8 +139,7 @@ export default function MapGrid() {
           <div className="ks-maplegend">
             <span><span className="ks-dot ks-dot--red" /> Active SOS</span>
             <span><span className="ks-dot ks-dot--blue" /> Selected pin</span>
-            <span><span className="ks-dot ks-dot--green" /> Safe zone <em className="ks-pending">(layer not connected)</em></span>
-            <span><span className="ks-dot ks-dot--amber" /> Station <em className="ks-pending">(layer not connected)</em></span>
+            <span>{pins.length} pin{pins.length === 1 ? "" : "s"} plotted · OpenStreetMap tiles</span>
           </div>
 
         </div>
@@ -203,47 +192,40 @@ export default function MapGrid() {
 
           <div className="ks-card">
             <div className="ks-card__head">
-              <Layers size={15} strokeWidth={1.8} />
-              <h2>Facilities Near Pin</h2>
-            </div>
-            <div className="ks-card__body" style={{ display: "grid", gap: 8 }}>
-              <a className="ks-btn ks-btn--ghost" href={nearby("police+station")} target="_blank" rel="noreferrer">
-                <Building2 size={14} strokeWidth={1.9} /> Police stations
-              </a>
-              <a className="ks-btn ks-btn--ghost" href={nearby("hospital")} target="_blank" rel="noreferrer">
-                <Building2 size={14} strokeWidth={1.9} /> Hospitals
-              </a>
-              <a className="ks-btn ks-btn--ghost" href={nearby("fire+station")} target="_blank" rel="noreferrer">
-                <Building2 size={14} strokeWidth={1.9} /> Fire stations
-              </a>
-              {selected && (
-                <a
-                  className="ks-btn"
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Navigation size={14} strokeWidth={1.9} /> Navigate to pin
-                </a>
-              )}
-            </div>
-          </div>
-
-          <div className="ks-card">
-            <div className="ks-card__head">
               <Signal size={15} strokeWidth={1.8} />
-              <h2>GPS Status</h2>
+              <h2>Pin Details</h2>
             </div>
             <div className="ks-list" style={{ padding: "0 16px" }}>
               <div className="ks-list__row"><span style={{ color: "var(--muted)" }}>Pins plotted</span><b>{pins.length}</b></div>
               <div className="ks-list__row"><span style={{ color: "var(--muted)" }}>Latitude</span><b>{selected ? lat.toFixed(6) : "—"}</b></div>
               <div className="ks-list__row"><span style={{ color: "var(--muted)" }}>Longitude</span><b>{selected ? lon.toFixed(6) : "—"}</b></div>
-              <div className="ks-list__row">
-                <span style={{ color: "var(--muted)" }}>District / Zone</span>
-                <b className="ks-pending">not mapped</b>
-              </div>
             </div>
+            {selected && (
+              <div className="ks-card__body" style={{ paddingTop: 12 }}>
+                <a
+                  className="ks-btn ks-btn--sm"
+                  style={{ width: "100%" }}
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=driving`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Navigation size={14} strokeWidth={1.9} /> Navigate to pin
+                </a>
+              </div>
+            )}
           </div>
+
+          <SafetyResources
+            compact
+            origin={selected ? { lat, lon } : null}
+            title="Facilities Near Pin"
+            caption={
+              selected
+                ? `Searching around ${selected.user_name}'s position`
+                : "Select a pin to search around it"
+            }
+            placeholder="Select an SOS pin first."
+          />
 
         </div>
 
